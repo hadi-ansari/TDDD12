@@ -1,0 +1,5 @@
+	•	A person can be only director or actor.
+	•	A person must be either actor or director.
+	•	A director can direct multiple episodes.
+	•	A director must direct at least one episode.
+	•	A TV serie must have at least one actor. 
