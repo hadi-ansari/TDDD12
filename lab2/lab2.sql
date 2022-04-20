@@ -6,13 +6,23 @@ Lab 2 report <Hadi Ansari (hadan326) and Sayed Ismail Safwat (saysa289)>
 Drop all user created tables that have been created when solving the lab
 */
 
+
+-- DROP TABLE IF EXISTS jbcity CASCADE;
+-- DROP TABLE IF EXISTS jbdebit CASCADE;
+-- DROP TABLE IF EXISTS jbemployee CASCADE;
+-- DROP TABLE IF EXISTS jbdept CASCADE;
+-- DROP TABLE IF EXISTS jbitem CASCADE;
+-- DROP TABLE IF EXISTS jbparts CASCADE;
+-- DROP TABLE IF EXISTS jbsale CASCADE;
+-- DROP TABLE IF EXISTS jbstore CASCADE;
+-- DROP TABLE IF EXISTS jbsupplier CASCADE;
+-- DROP TABLE IF EXISTS jbsupply CASCADE;
+
 DROP TABLE IF EXISTS jbitem2 CASCADE;
 DROP VIEW IF EXISTS total_cost_view CASCADE;
 DROP VIEW IF EXISTS total_cost_view2 CASCADE;
 DROP VIEW IF EXISTS item_less_view CASCADE;
-DROP VIEW IF EXISTS item_less CASCADE;
-DROP VIEW IF EXISTS jbsale_supply_view CASCADE; 
-DROP TABLE *;
+DROP VIEW IF EXISTS jbsale_supply_view CASCADE;
 
 
 /* Have the source scripts in the file so it is easy to recreate!*/
