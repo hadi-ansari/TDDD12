@@ -403,7 +403,7 @@ and the total cost. In the query that defines the view, capture the join
 condition in the WHERE clause (i.e., do not capture the join in the
 FROM clause by using keywords inner join, right join or left join).
 */
-CREATE VIEW total_cost_view AS SELECT debit, (quantity * price) AS total_cost FROM jbsale, jbitem WHERE item = id;
+CREATE VIEW total_cost_view AS SELECT s.debit, SUM(s.quantity * i.price) AS total_cost FROM jbdebit d, jbsale s, jbitem i WHERE d.id = s.debit AND s.item = i.id GROUP BY s.debit;
 
 /*
 Query OK, 0 rows affected (0.01 sec)
@@ -417,7 +417,7 @@ WHERE clause must not contain any join condition in this case. Motivate
 why you use type of join you do (left, right or inner), and why this is the
 correct one (in contrast to the other types of joins). 
 */
-CREATE VIEW total_cost_view2 AS SELECT debit, quantity * price AS total_cost FROM jbsale LEFT JOIN jbitem ON item = id;
+CREATE VIEW total_cost_view2 AS SELECT s.debit, SUM(s.quantity * i.price) AS total_cost FROM jbsale s LEFT JOIN jbdebit d ON s.debit = d.id LEFT JOIN jbitem i ON s.item = i.id GROUP BY s.debit;
 
 /*
 Query OK, 0 rows affected (0.01 sec)
@@ -425,7 +425,9 @@ Query OK, 0 rows affected (0.01 sec)
 
 /*
 Motivation: We used the LEFT JOIN because we needed the data from the right table to be attached to the left table.
-*/
+Left table in this case is jbsale and for each tuple and debit that exists in the sale table we need to create 
+a tuple in order to be able to calculate the total cost of that debit later on. 
+/*
 
 
 
