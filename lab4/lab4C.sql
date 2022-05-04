@@ -23,10 +23,15 @@ SET FOREIGN_KEY_CHECKS = 0; DROP TABLE BookedFor; SET FOREIGN_KEY_CHECKS=1;
 SET FOREIGN_KEY_CHECKS = 0; DROP TABLE Booking; SET FOREIGN_KEY_CHECKS=1;
 
 
+DROP PROCEDURE IF EXISTS addYear;
+DROP PROCEDURE IF EXISTS addDay;
 
 
 
 
+/*
+TABLES  
+*/
 CREATE TABLE Years(Year INTEGER PRIMARY KEY, ProfitFactor DOUBLE);
 
 CREATE TABLE Days(Day VARCHAR(10) PRIMARY KEY, WeekdayFactor DOUBLE, Year INTEGER, FOREIGN KEY (Year) REFERENCES Years(Year));
@@ -52,3 +57,16 @@ CREATE TABLE ReservedFor(Reservation_ID INTEGER, Passport_No INTEGER, PRIMARY KE
 CREATE TABLE BookedFor(TicketNo BIGINT PRIMARY KEY, Passport_No INTEGER, Reservation_ID INTEGER, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo), FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID));
 
 CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, NoBookedPassenger INTEGER, Card_No BIGINT, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
+
+/*
+PROCEDURES
+*/
+delimiter //
+CREATE PROCEDURE addYear(IN year INTEGER, IN factor DOUBLE)BEGIN INSERT INTO Years VALUES (year, factor); END;//
+delimiter ;
+
+
+delimiter //
+CREATE PROCEDURE addDay(IN year INTEGER, IN day VARCHAR(10), IN factor DOUBLE)BEGIN INSERT INTO Days VALUES (day, factor, year); END;//
+delimiter ;
+
