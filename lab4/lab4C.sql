@@ -96,3 +96,35 @@ CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airp
       END//
 
 delimiter ;
+
+delimiter //
+CREATE FUNCTION calculateFreeSeats(flightnumber INTEGER)
+      RETURNS INTEGER
+      BEGIN 
+      DECLARE freeSeats INTEGER;
+      SELECT AvailableSeats INTO freeSeats FROM Flight WHERE FlightNo = flightnumber;
+      RETURN freeSeats;
+      END //
+
+delimiter ;
+
+/*
+SELECT * FROM (SELECT W.ScheduleID FROM Weekly_Schedule AS W, Days AS D WHERE W.Day = D.Day) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = 211;
+*/
+/*
+Calculate the price of the next seat on a flight:
+ Function call: calculatePrice(flightnumber);
+where the output is the price (i.e. a double) of the next seat calculated as shown in 1e.
+      
+CREATE FUNCTION calculatePrice(flightnumber INTEGER)
+      RETURNS DOUBLE
+      BEGIN
+      DECLARE seatPrice DOUBLE;
+      SELECT RoutePrice, WeekdayFactor, NoBookedPassenger, ProfitFactor  FROM Route, Days, Booking, Years WHERE 
+
+      RoutePrice = Route
+      WeekdayFactor = Days
+      (NoBookedPassenger + 1) / 40 = Booking
+      ProfitFactor = Years
+
+*/
