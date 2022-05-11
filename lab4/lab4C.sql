@@ -34,13 +34,13 @@ TABLES
 */
 CREATE TABLE Years(Year INTEGER PRIMARY KEY, ProfitFactor DOUBLE);
 
-CREATE TABLE Days(Day VARCHAR(10) PRIMARY KEY, WeekdayFactor DOUBLE, Year INTEGER, FOREIGN KEY (Year) REFERENCES Years(Year));
+CREATE TABLE Days(Day VARCHAR(10), WeekdayFactor DOUBLE, IdentifyingYear INTEGER, FOREIGN KEY (IdentifyingYear) REFERENCES Years(Year), PRIMARY KEY (Day, IdentifyingYear));
 
 CREATE TABLE Airport(AirportCode VARCHAR(3) PRIMARY KEY, Country VARCHAR(30), Name VARCHAR(30));
 
-CREATE TABLE Route(RoutePrice DOUBLE, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), Year INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (D_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (Year) REFERENCES Years(Year), PRIMARY KEY (A_Airport_Code, D_Airport_Code));
+CREATE TABLE Route(RoutePrice DOUBLE, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), RouteYear INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (D_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (RouteYear) REFERENCES Years(Year), PRIMARY KEY (A_Airport_Code, D_Airport_Code));
 
-CREATE TABLE Weekly_Schedule(ScheduleID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Time TIME, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), Day VARCHAR(10), Year INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Route(A_Airport_Code), FOREIGN KEY (D_Airport_Code) REFERENCES Route(D_Airport_Code), FOREIGN KEY (Day) REFERENCES Days(Day), FOREIGN KEY (Year) REFERENCES Years(Year));
+CREATE TABLE Weekly_Schedule(ScheduleID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Time TIME, SA_Airport_Code VARCHAR(3), SD_Airport_Code VARCHAR(3), WeekDay VARCHAR(10), ScheduleYear INTEGER, FOREIGN KEY (SA_Airport_Code) REFERENCES Route(A_Airport_Code), FOREIGN KEY (SD_Airport_Code) REFERENCES Route(D_Airport_Code), FOREIGN KEY (WeekDay, ScheduleYear) REFERENCES Days(Day, IdentifyingYear), FOREIGN KEY (ScheduleYear) REFERENCES Years(Year));
 
 CREATE TABLE Passenger(PassportNo INTEGER PRIMARY KEY, FirstName VARCHAR(30), LastName VARCHAR(30));
 
@@ -76,7 +76,7 @@ CREATE PROCEDURE addDestination(IN airport_code VARCHAR(3), IN name VARCHAR(30),
 delimiter ;
 
 delimiter //
-CREATE PROCEDURE addRoute(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN routeprice DOUBLE) BEGIN INSERT INTO Route (RoutePrice, A_Airport_Code, D_Airport_Code, Year) VALUES (routeprice, arrival_airport_code, departure_airport_code, year); END;//
+CREATE PROCEDURE addRoute(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN routeprice DOUBLE) BEGIN INSERT INTO Route (RoutePrice, A_Airport_Code, D_Airport_Code, RouteYear) VALUES (routeprice, arrival_airport_code, departure_airport_code, year); END;//
 delimiter ;
 
 
@@ -86,7 +86,7 @@ CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airp
       BEGIN
       DECLARE schedule_id INTEGER;
       DECLARE counter INTEGER;
-      INSERT INTO Weekly_Schedule(Time, A_Airport_Code, D_Airport_Code, Day, Year) VALUES (departure_time, arrival_airport_code, departure_airport_code, day, year);
+      INSERT INTO Weekly_Schedule(Time, SA_Airport_Code, SD_Airport_Code, WeekDay, ScheduleYear) VALUES (departure_time, arrival_airport_code, departure_airport_code, day, year);
       SET schedule_id = (SELECT max(ScheduleID) FROM Weekly_Schedule);
       SET counter = 1;
       WHILE counter < 53 DO
