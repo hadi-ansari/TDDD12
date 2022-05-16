@@ -50,13 +50,13 @@ CREATE TABLE Flight(FlightNo INTEGER NOT NULL AUTO_INCREMENT, Schedule_ID INTEGE
 
 CREATE TABLE Customer(CardNo BIGINT PRIMARY KEY, CardHolderName VARCHAR(30));
 
-CREATE TABLE Reservation(ReservationID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Flight_No INTEGER, FOREIGN KEY (Flight_No) REFERENCES Flight(FlightNo));
+CREATE TABLE Reservation(ReservationID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Flight_No INTEGER, NoReservedPassenger INTEGER, FOREIGN KEY (Flight_No) REFERENCES Flight(FlightNo));
 
 CREATE TABLE ReservedFor(Reservation_ID INTEGER, Passport_No INTEGER, PRIMARY KEY(Reservation_ID, Passport_No), FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo));
 
 CREATE TABLE BookedFor(TicketNo BIGINT PRIMARY KEY, Passport_No INTEGER, Reservation_ID INTEGER, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo), FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID));
 
-CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, NoBookedPassenger INTEGER, Card_No BIGINT, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
+CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, Card_No BIGINT, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
 
 /*
 PROCEDURES
@@ -87,7 +87,7 @@ CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airp
       DECLARE schedule_id INTEGER;
       DECLARE counter INTEGER;
       INSERT INTO Weekly_Schedule(Time, SA_Airport_Code, SD_Airport_Code, WeekDay, ScheduleYear) VALUES (departure_time, arrival_airport_code, departure_airport_code, day, year);
-      SET schedule_id = (SELECT max(ScheduleID) FROM Weekly_Schedule);
+      SET schedule_id = (SELECT LAST_INSERT_ID());
       SET counter = 1;
       WHILE counter < 53 DO
       INSERT INTO Flight (Schedule_ID, Week) VALUES (schedule_id, counter);
@@ -108,23 +108,24 @@ CREATE FUNCTION calculateFreeSeats(flightnumber INTEGER)
 
 delimiter ;
 
-/*
-SELECT * FROM (SELECT W.ScheduleID FROM Weekly_Schedule AS W, Days AS D WHERE W.Day = D.Day) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = 211;
-*/
+          
 /*
 Calculate the price of the next seat on a flight:
  Function call: calculatePrice(flightnumber);
 where the output is the price (i.e. a double) of the next seat calculated as shown in 1e.
       
-CREATE FUNCTION calculatePrice(flightnumber INTEGER)
+CREATE FUNCTION calculatePrice(flightnumber INT)
       RETURNS DOUBLE
       BEGIN
-      DECLARE seatPrice DOUBLE;
-      SELECT RoutePrice, WeekdayFactor, NoBookedPassenger, ProfitFactor  FROM Route, Days, Booking, Years WHERE 
-
-      RoutePrice = Route
-      WeekdayFactor = Days
-      (NoBookedPassenger + 1) / 40 = Booking
-      ProfitFactor = Years
+      DECLARE rPrice DOUBLE;
+      DECLARE wdFactor DOUBLE;
+      DECLARE sFactor DOUBLE;
+      DECLARE pFactor DOUBLE;
+      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS R WHERE W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET wdFactor = (SELECT WeekdayFactor  FROM (SELECT * FROM Weekly_Schedule AS W, Days AS D WHERE W.Weekday = D.Day AND W.ScheduleYear = D.IdentifyingYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
+      SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      RETURN (rPrice * wdFactor * sFactor * pFactor);
+      END;
 
 */
