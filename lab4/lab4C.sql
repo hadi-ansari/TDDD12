@@ -25,6 +25,14 @@ SET FOREIGN_KEY_CHECKS = 0; DROP TABLE Booking; SET FOREIGN_KEY_CHECKS=1;
 
 DROP PROCEDURE IF EXISTS addYear;
 DROP PROCEDURE IF EXISTS addDay;
+DROP PROCEDURE IF EXISTS addDestination;
+DROP PROCEDURE IF EXISTS addRoute;
+
+DROP FUNCTION IF EXISTS calculateFreeSeats;
+DROP FUNCTION IF EXISTS calculatePrice;
+
+DROP FUNCTION IF EXISTS issueTicket;
+
 
 
 
@@ -36,13 +44,13 @@ CREATE TABLE Years(Year INTEGER PRIMARY KEY, ProfitFactor DOUBLE);
 
 CREATE TABLE Days(Day VARCHAR(10), WeekdayFactor DOUBLE, IdentifyingYear INTEGER, FOREIGN KEY (IdentifyingYear) REFERENCES Years(Year), PRIMARY KEY (Day, IdentifyingYear));
 
-CREATE TABLE Airport(AirportCode VARCHAR(3) PRIMARY KEY, Country VARCHAR(30), Name VARCHAR(30));
+CREATE TABLE Airport(AirportCode VARCHAR(3) PRIMARY KEY, Country VARCHAR(30), AirportName VARCHAR(30));
 
 CREATE TABLE Route(RoutePrice DOUBLE, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), RouteYear INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (D_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (RouteYear) REFERENCES Years(Year), PRIMARY KEY (A_Airport_Code, D_Airport_Code));
 
 CREATE TABLE Weekly_Schedule(ScheduleID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Time TIME, SA_Airport_Code VARCHAR(3), SD_Airport_Code VARCHAR(3), WeekDay VARCHAR(10), ScheduleYear INTEGER, FOREIGN KEY (SA_Airport_Code) REFERENCES Route(A_Airport_Code), FOREIGN KEY (SD_Airport_Code) REFERENCES Route(D_Airport_Code), FOREIGN KEY (WeekDay, ScheduleYear) REFERENCES Days(Day, IdentifyingYear), FOREIGN KEY (ScheduleYear) REFERENCES Years(Year));
 
-CREATE TABLE Passenger(PassportNo INTEGER PRIMARY KEY, FirstName VARCHAR(30), LastName VARCHAR(30));
+CREATE TABLE Passenger(PassportNo INTEGER PRIMARY KEY, Name VARCHAR(30));
 
 CREATE TABLE ContactPerson(Passport_No INTEGER PRIMARY KEY, Email VARCHAR(30), PhoneNo BIGINT, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo));
 
@@ -109,11 +117,7 @@ CREATE FUNCTION calculateFreeSeats(flightnumber INTEGER)
 delimiter ;
 
           
-/*
-Calculate the price of the next seat on a flight:
- Function call: calculatePrice(flightnumber);
-where the output is the price (i.e. a double) of the next seat calculated as shown in 1e.
-      
+delimiter //
 CREATE FUNCTION calculatePrice(flightnumber INT)
       RETURNS DOUBLE
       BEGIN
@@ -128,4 +132,40 @@ CREATE FUNCTION calculatePrice(flightnumber INT)
       RETURN (rPrice * wdFactor * sFactor * pFactor);
       END;
 
-*/
+delimiter ;
+
+
+CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = CAST(RAND() * 1000000 AS INT);
+
+delimiter //
+CREATE PROCEDURE addReservation(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN week INTEGER, IN day VARCHAR(10), IN time TIME, IN number_of_passenger INTEGER, OUT output_reservation_nr INTEGER )
+BEGIN
+DECLARE Fnumber INTEGER;
+SET Fnumber = (SELECT FlightNo FROM Flight AS F, Weekly_Schedule AS W WHERE F.Schedule_ID = W.ScheduleID AND W.SA_Airport_Code = arrival_airport_code AND W.SD_Airport_Code = departure_airport_code AND W.ScheduleYear = year AND W.WeekDay = day AND W.Time = time AND F.Week = week);
+SELECT CAST(RAND() * 1000000 AS INT) INTO output_reservation_nr;
+INSERT INTO Reservation VALUES (output_reservation_nr, Fnumber, number_of_passenger);
+
+END;
+
+delimiter ;
+
+
+
+
+delimiter // 
+CREATE PROCEDURE addPassenger(IN reservation_nr INTEGER, IN passport_number INTEGER, IN name VARCHAR(30))
+BEGIN
+DECLARE addedPassenger INTEGER;
+DECLARE noOfReservedPassenger INTEGER;
+SET addedPassenger = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr);
+SET noOfReservedPassenger = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
+IF addedPassenger = noOfReservedPassenger THEN
+      UPDATE Reservation SET NoReservedPassenger = NoReservedPassenger + 1 WHERE ReservationID = reservation_nr;
+END IF;
+
+INSERT INTO Passenger VALUES (passport_number, name);
+INSERT INTO ReservedFor VALUES (reservation_nr, passport_number);
+
+END;
+
+delimiter ;
