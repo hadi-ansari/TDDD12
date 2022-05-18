@@ -28,6 +28,8 @@ DROP PROCEDURE IF EXISTS addDay;
 DROP PROCEDURE IF EXISTS addDestination;
 DROP PROCEDURE IF EXISTS addRoute;
 
+DROP PROCEDURE IF EXISTS addContact;
+
 DROP FUNCTION IF EXISTS calculateFreeSeats;
 DROP FUNCTION IF EXISTS calculatePrice;
 
@@ -58,13 +60,13 @@ CREATE TABLE Flight(FlightNo INTEGER NOT NULL AUTO_INCREMENT, Schedule_ID INTEGE
 
 CREATE TABLE Customer(CardNo BIGINT PRIMARY KEY, CardHolderName VARCHAR(30));
 
-CREATE TABLE Reservation(ReservationID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Flight_No INTEGER, NoReservedPassenger INTEGER, FOREIGN KEY (Flight_No) REFERENCES Flight(FlightNo));
+CREATE TABLE Reservation(ReservationID INTEGER PRIMARY KEY, Flight_No INTEGER, NoReservedPassenger INTEGER, FOREIGN KEY (Flight_No) REFERENCES Flight(FlightNo));
 
 CREATE TABLE ReservedFor(Reservation_ID INTEGER, Passport_No INTEGER, PRIMARY KEY(Reservation_ID, Passport_No), FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo));
 
 CREATE TABLE BookedFor(TicketNo BIGINT PRIMARY KEY, Passport_No INTEGER, Reservation_ID INTEGER, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo), FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID));
 
-CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, Card_No BIGINT, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
+CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, Card_No BIGINT, ActualPrice DOUBLE, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
 
 /*
 PROCEDURES
@@ -166,6 +168,51 @@ END IF;
 INSERT INTO Passenger VALUES (passport_number, name);
 INSERT INTO ReservedFor VALUES (reservation_nr, passport_number);
 
+END;
+
+delimiter ;
+
+
+
+delimiter //
+
+CREATE PROCEDURE addContact(IN reservation_nr INTEGER, IN passport_number INTEGER, IN email VARCHAR(30), IN phone BIGINT)
+BEGIN
+DECLARE cond INTEGER;
+SET cond = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr AND Passport_No = passport_number);
+IF cond = 1 THEN
+      INSERT INTO ContactPerson VALUES (passport_number, email, phone);
+END IF;
+
+END;//
+
+delimiter ;
+
+
+
+delimiter //
+
+CREATE PROCEDURE addPayment(IN reservation_nr INTEGER, IN cardholder_name VARCHAR(30), IN credit_card_number BIGINT)
+BEGIN
+DECLARE hasContact INTEGER DEFAULT 0;
+DECLARE noOfPassengersReserved INTEGER;
+DECLARE bookingPrice DOUBLE;
+DECLARE flight_number INTEGER;
+DECLARE noOfAvailableSeats INTEGER;
+
+SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No EXISTS (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No ));
+SET flight_number = (SELECT Flight_No FROM Reservation WHERE ResevationID = reservation_nr);
+SET noOfPassengersReserved = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
+SET noOfAvailableSeats = CALL calculateFreeSeats(flight_number);
+
+IF hasContact > 0 AND noOfAvailableSeats >= noOfPassengersReserved THEN
+      SET bookingPrice = CALL calculatePrice(flight_number) * noOfPassengersReserved;
+      INSERT INTO Customer VALUES (credit_card_number, cardholder_name);
+      UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved;
+      INSERT INTO BookedFor VALUES ()
+ELSE
+      SELECT "Contact person is missing for this reservation" AS "Message";
+END IF;
 END;
 
 delimiter ;
