@@ -105,9 +105,14 @@ CREATE PROCEDURE addReservation(IN departure_airport_code VARCHAR(3), IN arrival
 BEGIN
 DECLARE Fnumber INTEGER;
 SET Fnumber = (SELECT FlightNo FROM Flight AS F, Weekly_Schedule AS W WHERE F.Schedule_ID = W.ScheduleID AND W.SA_Airport_Code = arrival_airport_code AND W.SD_Airport_Code = departure_airport_code AND W.ScheduleYear = year AND W.WeekDay = day AND W.Time = time AND F.Week = week);
-SELECT CAST(RAND() * 1000000 AS INT) AS random FROM Reservation WHERE random NOT IN (SELECT ReservationID FROM Reservation) INTO output_reservation_nr;
-INSERT INTO Reservation VALUES (output_reservation_nr, Fnumber, number_of_passenger);
-
+IF Fnumber IS NULL THEN
+      SELECT "There exist no flight for the given route, date and time" as "Message";
+ELSEIF number_of_passenger > calculateFreeSeats(Fnumber) THEN
+      SELECT "There are not enough seats available on the chosen flight" as "Message";
+ELSE
+      SELECT random FROM (SELECT CAST(RAND() * 1000000 AS INT) AS random) AS RandomTable WHERE random NOT IN (SELECT ReservationID FROM Reservation) INTO output_reservation_nr;
+      INSERT INTO Reservation VALUES (output_reservation_nr, Fnumber, number_of_passenger);
+END IF;
 END;//
 
 
@@ -115,22 +120,43 @@ CREATE PROCEDURE addPassenger(IN reservation_nr INTEGER, IN passport_number INTE
 BEGIN
 DECLARE addedPassenger INTEGER;
 DECLARE noOfReservedPassenger INTEGER;
+DECLARE existingPassenger INTEGER DEFAULT 0;
+DECLARE validReservationNumber INTEGER DEFAULT 0;
+DECLARE alreadyPaid INTEGER DEFAULT 0;
 SET addedPassenger = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr);
 SET noOfReservedPassenger = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
-IF addedPassenger = noOfReservedPassenger THEN
-      UPDATE Reservation SET NoReservedPassenger = NoReservedPassenger + 1 WHERE ReservationID = reservation_nr;
-END IF;
+SET existingPassenger = (SELECT COUNT(*) FROM Passenger WHERE PassportNo = passport_number);
+SET validReservationNumber = (SELECT COUNT(*) FROM Reservation WHERE ReservationID = reservation_nr);
+SET alreadyPaid = (SELECT COUNT(*) FROM Booking WHERE Reservation_ID = reservation_nr);
 
-INSERT INTO Passenger VALUES (passport_number, name);
-INSERT INTO ReservedFor VALUES (reservation_nr, passport_number);
+IF validReservationNumber <= 0 THEN
+      SELECT "The given reservation number does not exist" as "Message";
+ELSEIF alreadyPaid > 0 THEN
+      SELECT "The booking has already been paid and no futher passengers can be added" as "Message";
+ELSE
+      IF addedPassenger = noOfReservedPassenger THEN
+            UPDATE Reservation SET NoReservedPassenger = NoReservedPassenger + 1 WHERE ReservationID = reservation_nr;
+      END IF;
+      IF existingPassenger <= 0 THEN
+            INSERT INTO Passenger VALUES (passport_number, name);
+      END IF;
+
+      INSERT INTO ReservedFor VALUES (reservation_nr, passport_number);
+END IF;
 
 END;//
 
 CREATE PROCEDURE addContact(IN reservation_nr INTEGER, IN passport_number INTEGER, IN email VARCHAR(30), IN phone BIGINT)
 BEGIN
-DECLARE cond INTEGER;
-SET cond = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr AND Passport_No = passport_number);
-IF cond = 1 THEN
+DECLARE validPassenger INTEGER DEFAULT 0;
+DECLARE validReservationNumber INTEGER DEFAULT 0;
+SET validReservationNumber = (SELECT COUNT(*) FROM Reservation WHERE ReservationID = reservation_nr);
+SET validPassenger = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr AND Passport_No = passport_number);
+IF validReservationNumber <= 0 THEN 
+      SELECT "The given reservation number does not exist" as "Message";
+ELSEIF validPassenger <= 0 THEN
+      SELECT "The person is not a passenger of the reservation" as "Message";
+ELSE
       INSERT INTO ContactPerson VALUES (passport_number, email, phone);
 END IF;
 
@@ -138,40 +164,55 @@ END;//
 
 CREATE PROCEDURE addPayment(IN reservation_nr INTEGER, IN cardholder_name VARCHAR(30), IN credit_card_number BIGINT)
 BEGIN
+DECLARE done INT DEFAULT 0;
 DECLARE hasContact INTEGER DEFAULT 0;
 DECLARE noOfPassengersReserved INTEGER;
+DECLARE noOfPassengersAdded INTEGER;
 DECLARE bookingPrice DOUBLE;
+DECLARE validReservationNumber INTEGER DEFAULT 0;
 DECLARE flight_number INTEGER;
 DECLARE noOfAvailableSeats INTEGER;
 DECLARE rn INTEGER;
 DECLARE pn INTEGER;
 DECLARE reservation_cursor CURSOR FOR SELECT Reservation_ID FROM ReservedFor;
 DECLARE passport_cursor CURSOR FOR SELECT Passport_No FROM ReservedFor;
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
-SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No NOT IN (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No ));
-SET flight_number = (SELECT Flight_No FROM Reservation WHERE ResevationID = reservation_nr);
+SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No IN (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No AND R.Reservation_ID = reservation_nr));
+SET flight_number = (SELECT Flight_No FROM Reservation WHERE ReservationID = reservation_nr);
 SET noOfPassengersReserved = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
+SET noOfPassengersAdded = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr);
 SET noOfAvailableSeats = calculateFreeSeats(flight_number);
+SET validReservationNumber = (SELECT COUNT(*) FROM Reservation WHERE ReservationID = reservation_nr);
 
-IF hasContact > 0 AND noOfAvailableSeats >= noOfPassengersReserved THEN
+IF hasContact <= 0 THEN
+      SELECT "The reservation has no contact yet" AS "Message";
+ELSEIF validReservationNumber <= 0 THEN
+      SELECT "The given reservation number does not exist" AS "Message";
+ELSEIF noOfAvailableSeats < noOfPassengersReserved THEN
+      SELECT "There are not enough seats available on the flight anymore, deleting reservation" AS "Message";
+ELSE
       SET bookingPrice = calculatePrice(flight_number) * noOfPassengersReserved;
       INSERT INTO Customer VALUES (credit_card_number, cardholder_name);
+      INSERT INTO Booking VALUES (reservation_nr, credit_card_number, bookingPrice);
       UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved;
 
       OPEN reservation_cursor;
       OPEN passport_cursor;
-      WHILE noOfPassengersReserved > 0 DO
+      loop_through_rows: LOOP
+            IF noOfPassengersAdded <= 0 THEN
+                  LEAVE loop_through_rows;
+            END IF;
             FETCH reservation_cursor INTO rn;
             FETCH passport_cursor INTO pn;
+            /* SELECT rn, pn; */
             IF rn = reservation_nr THEN
                   INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr); /*issueTicket trigger handles unguessable ticket numbers*/
-                  SET noOfPassengersReserved = noOfPassengersReserved - 1;
+                  SET noOfPassengersAdded = noOfPassengersAdded - 1;
             END IF;
-      END WHILE;
+      END LOOP;
       CLOSE reservation_cursor;
       CLOSE passport_cursor;
-ELSE
-      SELECT "Contact person is missing for this reservation" AS "Message";
 END IF;
 END;//
 
