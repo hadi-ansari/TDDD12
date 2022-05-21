@@ -19,7 +19,7 @@ DROP TABLE IF EXISTS ContactPerson;
 DROP TABLE IF EXISTS Flight; 
 DROP TABLE IF EXISTS Customer;
 DROP TABLE IF EXISTS Reservation;
-DROP TABLE IF EXISTS ReservedFor
+DROP TABLE IF EXISTS ReservedFor;
 DROP TABLE IF EXISTS BookedFor; 
 DROP TABLE IF EXISTS Booking;
 
@@ -95,7 +95,11 @@ CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airp
       END WHILE; 
       END//
 
+/* Trigger(s) */
 
+delimiter ;
+CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = (SELECT U.ticket_nr FROM (SELECT CAST(RAND() * 1000000000 AS INTEGER) AS ticket_nr) AS U WHERE U.ticket_nr NOT IN (SELECT TicketNo FROM BookedFor));
+delimiter //
 
 CREATE PROCEDURE addReservation(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN week INTEGER, IN day VARCHAR(10), IN time TIME, IN number_of_passenger INTEGER, OUT output_reservation_nr INTEGER )
 BEGIN
@@ -104,7 +108,7 @@ SET Fnumber = (SELECT FlightNo FROM Flight AS F, Weekly_Schedule AS W WHERE F.Sc
 SELECT CAST(RAND() * 1000000 AS INT) AS random FROM Reservation WHERE random NOT IN (SELECT ReservationID FROM Reservation) INTO output_reservation_nr;
 INSERT INTO Reservation VALUES (output_reservation_nr, Fnumber, number_of_passenger);
 
-END;
+END;//
 
 
 CREATE PROCEDURE addPassenger(IN reservation_nr INTEGER, IN passport_number INTEGER, IN name VARCHAR(30))
@@ -120,7 +124,7 @@ END IF;
 INSERT INTO Passenger VALUES (passport_number, name);
 INSERT INTO ReservedFor VALUES (reservation_nr, passport_number);
 
-END;
+END;//
 
 CREATE PROCEDURE addContact(IN reservation_nr INTEGER, IN passport_number INTEGER, IN email VARCHAR(30), IN phone BIGINT)
 BEGIN
@@ -169,7 +173,7 @@ IF hasContact > 0 AND noOfAvailableSeats >= noOfPassengersReserved THEN
 ELSE
       SELECT "Contact person is missing for this reservation" AS "Message";
 END IF;
-END;
+END;//
 
 delimiter ;
 
@@ -198,22 +202,13 @@ CREATE FUNCTION calculatePrice(flightnumber INT)
       SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
       SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
       RETURN (rPrice * wdFactor * sFactor * pFactor);
-      END;
+      END;//
 
 delimiter ;
-
-
-/* Trigger(s) */
-
-
-CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = (SELECT U.ticket_nr FROM (SELECT CAST(RAND() * 1000000000 AS INTEGER) AS ticket_nr) AS U WHERE U.ticket_nr NOT IN (SELECT TicketNo FROM BookedFor));
 
 
 /* View(s) */
 
-delimiter //
-
 CREATE VIEW allFlights AS SELECT W.SD_Airport_Code departure_city_name, W.SA_Airport_Code AS destination_city_name, W.Time AS departure_time, W.WeekDay AS departure_day, F.Week AS departure_week, W.ScheduleYear AS departure_year, calculateFreeSeats(F.FlightNo) AS nr_of_free_seats, calculatePrice(F.FlightNo) AS current_price_per_seat
 FROM Weekly_Schedule AS W, Flight AS F WHERE F.Schedule_ID = W.ScheduleID;
 
-delimiter ;
