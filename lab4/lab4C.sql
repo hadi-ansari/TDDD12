@@ -137,14 +137,15 @@ CREATE FUNCTION calculatePrice(flightnumber INT)
 delimiter ;
 
 
-CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = CAST(RAND() * 1000000 AS INT);
+CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = (SELECT U.ticket_nr FROM (SELECT CAST(RAND() * 1000000000 AS INTEGER) AS ticket_nr) AS U WHERE U.ticket_nr NOT IN (SELECT TicketNo FROM BookedFor));
 
 delimiter //
+
 CREATE PROCEDURE addReservation(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN week INTEGER, IN day VARCHAR(10), IN time TIME, IN number_of_passenger INTEGER, OUT output_reservation_nr INTEGER )
 BEGIN
 DECLARE Fnumber INTEGER;
 SET Fnumber = (SELECT FlightNo FROM Flight AS F, Weekly_Schedule AS W WHERE F.Schedule_ID = W.ScheduleID AND W.SA_Airport_Code = arrival_airport_code AND W.SD_Airport_Code = departure_airport_code AND W.ScheduleYear = year AND W.WeekDay = day AND W.Time = time AND F.Week = week);
-SELECT CAST(RAND() * 1000000 AS INT) INTO output_reservation_nr;
+SELECT CAST(RAND() * 1000000 AS INT) AS random FROM Reservation WHERE random NOT IN (SELECT ReservationID FROM Reservation) INTO output_reservation_nr;
 INSERT INTO Reservation VALUES (output_reservation_nr, Fnumber, number_of_passenger);
 
 END;
@@ -199,20 +200,71 @@ DECLARE noOfPassengersReserved INTEGER;
 DECLARE bookingPrice DOUBLE;
 DECLARE flight_number INTEGER;
 DECLARE noOfAvailableSeats INTEGER;
+DECLARE rn INTEGER;
+DECLARE pn INTEGER;
+DECLARE reservation_cursor CURSOR FOR SELECT Reservation_ID FROM ReservedFor;
+DECLARE passport_cursor CURSOR FOR SELECT Passport_No FROM ReservedFor;
 
-SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No EXISTS (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No ));
+SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No NOT IN (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No ));
 SET flight_number = (SELECT Flight_No FROM Reservation WHERE ResevationID = reservation_nr);
 SET noOfPassengersReserved = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
-SET noOfAvailableSeats = CALL calculateFreeSeats(flight_number);
+SET noOfAvailableSeats = calculateFreeSeats(flight_number);
 
 IF hasContact > 0 AND noOfAvailableSeats >= noOfPassengersReserved THEN
-      SET bookingPrice = CALL calculatePrice(flight_number) * noOfPassengersReserved;
+      SET bookingPrice = calculatePrice(flight_number) * noOfPassengersReserved;
       INSERT INTO Customer VALUES (credit_card_number, cardholder_name);
       UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved;
-      INSERT INTO BookedFor VALUES ()
+
+      OPEN reservation_cursor;
+      OPEN passport_cursor;
+      WHILE noOfPassengersReserved > 0 DO
+            FETCH reservation_cursor INTO rn;
+            FETCH passport_cursor INTO pn;
+            IF rn = reservation_nr THEN
+                  INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr); /*issueTicket trigger handles unguessable ticket numbers*/
+                  SET noOfPassengersReserved = noOfPassengersReserved - 1;
+            END IF;
+      END WHILE;
+      CLOSE reservation_cursor;
+      CLOSE passport_cursor;
 ELSE
       SELECT "Contact person is missing for this reservation" AS "Message";
 END IF;
 END;
 
 delimiter ;
+
+Create a view allFlights containing all flights in your database with the following information:
+ departure_city_name, destination_city_name, departure_time, departure_day, departure_week, departure_year, nr_of_free_seats, current_price_per_seat. 
+
+
+CREATE VIEW allFlights AS SELECT W.SD_Airport_Code departure_city_name, W.SA_Airport_Code AS destination_city_name, W.Time AS departure_time, W.WeekDay AS departure_day, F.Week AS departure_week, W.ScheduleYear AS departure_year, calculateFreeSeats(F.FlightNo) AS nr_of_free_seats, calculatePrice(F.FlightNo) AS current_price_per_seat
+FROM Weekly_Schedule AS W, Flight AS F WHERE F.Schedule_ID = W.ScheduleID;
+
+
+/*
+CREATE PROCEDURE c()
+BEGIN
+  DECLARE done INT DEFAULT FALSE;
+  DECLARE a INT DEFAULT FALSE;
+  DECLARE co VARCHAR(10) DEFAULT FALSE;
+  DECLARE cursor_age CURSOR FOR SELECT age FROM test2;
+  DECLARE cursor_col CURSOR FOR SELECT color FROM test2;
+  SET done = (SELECT COUNT(*) FROM test2);
+  OPEN cursor_age;
+  OPEN cursor_col;
+  loop_through_rows: LOOP
+      IF done <= 0 THEN
+            LEAVE loop_through_rows;
+      END IF;
+      FETCH cursor_age INTO a;
+      FETCH cursor_col INTO co;
+      IF a = 167 THEN
+            SELECT co AS color;
+      END IF;
+      SET done = done - 1; 
+  END LOOP;
+  CLOSE cursor_age;
+  CLOSE cursor_col;
+END;
+;; */
