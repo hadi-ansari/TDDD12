@@ -21,6 +21,7 @@ CALL addRoute("MIT","HOB",2010,2000);
 CALL addRoute("HOB","MIT",2010,1600);
 CALL addRoute("MIT","HOB",2011,2100);
 CALL addRoute("HOB","MIT",2011,1500);
+
 CALL addFlight("MIT","HOB", 2010, "Monday", "09:00:00");
 CALL addFlight("HOB","MIT", 2010, "Tuesday", "10:00:00");
 CALL addFlight("MIT","HOB", 2011, "Sunday", "11:00:00");
@@ -32,7 +33,9 @@ CALL addPassenger(@a,00000001,"Frodo Baggins");
 CALL addContact(@a,00000001,"frodo@magic.mail",080667989); 
 CALL addPassenger(@a,00000002,"Sam Gamgee"); 
 CALL addPassenger(@a,00000003,"Merry Pippins");
+
 CALL addPayment (@a, "Gandalf", 6767); 
+
 CALL addReservation("MIT","HOB",2010,1,"Monday","09:00:00",3,@b); 
 CALL addPassenger(@b,00000011,"Nazgul1"); 
 CALL addContact(@b,00000011,"Nazgul@darkness.mail",666); 

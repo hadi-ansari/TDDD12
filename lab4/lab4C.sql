@@ -11,7 +11,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS Years;
 DROP TABLE IF EXISTS Days;
-DROP TABLE IF EXISTS Airport; 
+DROP TABLE IF EXISTS Airport;
 DROP TABLE IF EXISTS Route; 
 DROP TABLE IF EXISTS Weekly_Schedule; 
 DROP TABLE IF EXISTS Passenger; 
@@ -51,7 +51,7 @@ CREATE TABLE Days(Day VARCHAR(10), WeekdayFactor DOUBLE, IdentifyingYear INTEGER
 
 CREATE TABLE Airport(AirportCode VARCHAR(3) PRIMARY KEY, Country VARCHAR(30), AirportName VARCHAR(30));
 
-CREATE TABLE Route(RoutePrice DOUBLE, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), RouteYear INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (D_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (RouteYear) REFERENCES Years(Year), PRIMARY KEY (A_Airport_Code, D_Airport_Code));
+CREATE TABLE Route(RoutePrice DOUBLE, A_Airport_Code VARCHAR(3), D_Airport_Code VARCHAR(3), RouteYear INTEGER, FOREIGN KEY (A_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (D_Airport_Code) REFERENCES Airport(AirportCode), FOREIGN KEY (RouteYear) REFERENCES Years(Year), PRIMARY KEY (A_Airport_Code, D_Airport_Code, RouteYear));
 
 CREATE TABLE Weekly_Schedule(ScheduleID INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, Time TIME, SA_Airport_Code VARCHAR(3), SD_Airport_Code VARCHAR(3), WeekDay VARCHAR(10), ScheduleYear INTEGER, FOREIGN KEY (SA_Airport_Code) REFERENCES Route(A_Airport_Code), FOREIGN KEY (SD_Airport_Code) REFERENCES Route(D_Airport_Code), FOREIGN KEY (WeekDay, ScheduleYear) REFERENCES Days(Day, IdentifyingYear), FOREIGN KEY (ScheduleYear) REFERENCES Years(Year));
 
@@ -78,9 +78,21 @@ CREATE PROCEDURE addYear(IN year INTEGER, IN factor DOUBLE)BEGIN INSERT INTO Yea
 
 CREATE PROCEDURE addDay(IN year INTEGER, IN day VARCHAR(10), IN factor DOUBLE)BEGIN INSERT INTO Days VALUES (day, factor, year); END;//
 
-CREATE PROCEDURE addDestination(IN airport_code VARCHAR(3), IN name VARCHAR(30), IN country VARCHAR(30)) BEGIN INSERT INTO Airport VALUES (airport_code, name, country); END;//
+CREATE PROCEDURE addDestination(IN airport_code VARCHAR(3), IN name VARCHAR(30), IN country VARCHAR(30)) BEGIN INSERT INTO Airport VALUES (airport_code, country, name); END;//
 
-CREATE PROCEDURE addRoute(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN routeprice DOUBLE) BEGIN INSERT INTO Route (RoutePrice, A_Airport_Code, D_Airport_Code, RouteYear) VALUES (routeprice, arrival_airport_code, departure_airport_code, year); END;//
+CREATE PROCEDURE addRoute(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN routeprice DOUBLE)
+BEGIN
+DECLARE route_existed INTEGER DEFAULT 0;
+SET route_existed = (SELECT COUNT(*) FROM Route WHERE A_Airport_Code = arrival_airport_code AND D_Airport_Code = departure_airport_code);
+
+IF route_existed > 100000000000 THEN
+      SELECT "This route already exists!" AS "Message";
+ELSE 
+      INSERT INTO Route (RoutePrice, A_Airport_Code, D_Airport_Code, RouteYear) VALUES (routeprice, arrival_airport_code, departure_airport_code, year);
+END IF;
+END;//
+
+
 
 CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN day VARCHAR(10), IN departure_time Time)
       BEGIN
@@ -185,6 +197,7 @@ SET noOfPassengersAdded = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID
 SET noOfAvailableSeats = calculateFreeSeats(flight_number);
 SET validReservationNumber = (SELECT COUNT(*) FROM Reservation WHERE ReservationID = reservation_nr);
 
+
 IF validReservationNumber <= 0 THEN
       SELECT "The given reservation number does not exist" AS "Message";
 ELSEIF hasContact <= 0 THEN
@@ -195,8 +208,7 @@ ELSE
       SET bookingPrice = calculatePrice(flight_number) * noOfPassengersReserved;
       INSERT INTO Customer VALUES (credit_card_number, cardholder_name);
       INSERT INTO Booking VALUES (reservation_nr, credit_card_number, bookingPrice);
-      UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved;
-
+      UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved WHERE FlightNo = flight_number;
       OPEN reservation_cursor;
       OPEN passport_cursor;
       loop_through_rows: LOOP
@@ -205,9 +217,8 @@ ELSE
             END IF;
             FETCH reservation_cursor INTO rn;
             FETCH passport_cursor INTO pn;
-            /* SELECT rn, pn; */
             IF rn = reservation_nr THEN
-                  INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr); /*issueTicket trigger handles unguessable ticket numbers*/
+                  INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr); /*issueTicket trigger handles unguessable ticket numbers */
                   SET noOfPassengersAdded = noOfPassengersAdded - 1;
             END IF;
       END LOOP;
@@ -238,11 +249,11 @@ CREATE FUNCTION calculatePrice(flightnumber INT)
       DECLARE wdFactor DOUBLE;
       DECLARE sFactor DOUBLE;
       DECLARE pFactor DOUBLE;
-      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS R WHERE W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS R WHERE W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code AND W.ScheduleYear = R.RouteYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
       SET wdFactor = (SELECT WeekdayFactor  FROM (SELECT * FROM Weekly_Schedule AS W, Days AS D WHERE W.Weekday = D.Day AND W.ScheduleYear = D.IdentifyingYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
       SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
       SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
-      RETURN (rPrice * wdFactor * sFactor * pFactor);
+      RETURN ROUND((rPrice * wdFactor * sFactor * pFactor), 3);
       END;//
 
 delimiter ;
@@ -250,6 +261,8 @@ delimiter ;
 
 /* View(s) */
 
-CREATE VIEW allFlights AS SELECT W.SD_Airport_Code departure_city_name, W.SA_Airport_Code AS destination_city_name, W.Time AS departure_time, W.WeekDay AS departure_day, F.Week AS departure_week, W.ScheduleYear AS departure_year, calculateFreeSeats(F.FlightNo) AS nr_of_free_seats, calculatePrice(F.FlightNo) AS current_price_per_seat
-FROM Weekly_Schedule AS W, Flight AS F WHERE F.Schedule_ID = W.ScheduleID;
+CREATE VIEW allFlights AS SELECT DA.DepCity AS departure_city_name, AA.DesCity AS destination_city_name, AF.Time AS departure_time, AF.WeekDay AS departure_day, AF.Week AS departure_week, AF.ScheduleYear AS departure_year, AF.FlightNo, calculateFreeSeats(AF.FlightNo) AS nr_of_free_seats, calculatePrice(AF.FlightNo) AS current_price_per_seat
+FROM (SELECT * FROM Flight AS F, Weekly_Schedule AS W, Route AS R, Airport AS A WHERE F.Schedule_ID = W.ScheduleID AND W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code AND W.ScheduleYear = R.RouteYear AND R.A_Airport_Code = A.AirportCode) AS AF,
+(SELECT AirportCode AS DesAC, AirportName AS DesCity FROM Airport) AS AA, (SELECT AirportCode AS DepAC, AirportName AS DepCity FROM Airport) AS DA 
+WHERE ((AF.A_Airport_Code = AA.DesAC AND AF.A_Airport_Code = DA.DepAC) OR (AF.D_Airport_Code = DA.DepAC AND AF.A_Airport_Code = AA.DesAC)) AND (DA.DepCity != DesCity);
 
