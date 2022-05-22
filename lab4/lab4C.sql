@@ -57,7 +57,7 @@ CREATE TABLE Weekly_Schedule(ScheduleID INTEGER NOT NULL AUTO_INCREMENT PRIMARY 
 
 CREATE TABLE Passenger(PassportNo INTEGER PRIMARY KEY, Name VARCHAR(30));
 
-CREATE TABLE ContactPerson(Passport_No INTEGER PRIMARY KEY, Email VARCHAR(30), PhoneNo BIGINT, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo));
+CREATE TABLE ContactPerson(Passport_No INTEGER, R_ID INTEGER, Email VARCHAR(30), PhoneNo BIGINT, FOREIGN KEY (Passport_No) REFERENCES Passenger(PassportNo), PRIMARY KEY(Passport_No, R_ID));
 
 CREATE TABLE Flight(FlightNo INTEGER NOT NULL AUTO_INCREMENT, Schedule_ID INTEGER, Week INTEGER, AvailableSeats INTEGER DEFAULT 40, PRIMARY KEY (FlightNo, Schedule_ID), FOREIGN KEY (Schedule_ID) REFERENCES Weekly_Schedule(ScheduleID));
 
@@ -83,9 +83,9 @@ CREATE PROCEDURE addDestination(IN airport_code VARCHAR(3), IN name VARCHAR(30),
 CREATE PROCEDURE addRoute(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN routeprice DOUBLE)
 BEGIN
 DECLARE route_existed INTEGER DEFAULT 0;
-SET route_existed = (SELECT COUNT(*) FROM Route WHERE A_Airport_Code = arrival_airport_code AND D_Airport_Code = departure_airport_code);
+SET route_existed = (SELECT COUNT(*) FROM Route WHERE A_Airport_Code = arrival_airport_code AND D_Airport_Code = departure_airport_code AND RouteYear = year);
 
-IF route_existed > 100000000000 THEN
+IF route_existed > 0 THEN
       SELECT "This route already exists!" AS "Message";
 ELSE 
       INSERT INTO Route (RoutePrice, A_Airport_Code, D_Airport_Code, RouteYear) VALUES (routeprice, arrival_airport_code, departure_airport_code, year);
@@ -169,7 +169,7 @@ IF validReservationNumber <= 0 THEN
 ELSEIF validPassenger <= 0 THEN
       SELECT "The person is not a passenger of the reservation" as "Message";
 ELSE
-      INSERT INTO ContactPerson VALUES (passport_number, email, phone);
+      INSERT INTO ContactPerson VALUES (passport_number, reservation_nr, email, phone);
 END IF;
 
 END;//
@@ -190,7 +190,7 @@ DECLARE reservation_cursor CURSOR FOR SELECT Reservation_ID FROM ReservedFor;
 DECLARE passport_cursor CURSOR FOR SELECT Passport_No FROM ReservedFor;
 DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
-SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.Passport_No IN (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No AND R.Reservation_ID = reservation_nr));
+SET hasContact = (SELECT COUNT(*) FROM ContactPerson AS CP WHERE CP.R_ID = reservation_nr); /* IN (SELECT P.PassportNo FROM Passenger AS P, ReservedFor AS R WHERE P.PassportNo = R.Passport_No AND R.Reservation_ID = reservation_nr)); */
 SET flight_number = (SELECT Flight_No FROM Reservation WHERE ReservationID = reservation_nr);
 SET noOfPassengersReserved = (SELECT NoReservedPassenger FROM Reservation WHERE ReservationID = reservation_nr);
 SET noOfPassengersAdded = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID = reservation_nr);
@@ -204,10 +204,11 @@ ELSEIF hasContact <= 0 THEN
       SELECT "The reservation has no contact yet" AS "Message";
 ELSEIF noOfAvailableSeats < noOfPassengersReserved THEN
       SELECT "There are not enough seats available on the flight anymore, deleting reservation" AS "Message";
-ELSE
+ELSE 
       SET bookingPrice = calculatePrice(flight_number) * noOfPassengersReserved;
-      INSERT INTO Customer VALUES (credit_card_number, cardholder_name);
+      INSERT IGNORE INTO Customer VALUES (credit_card_number, cardholder_name);
       INSERT INTO Booking VALUES (reservation_nr, credit_card_number, bookingPrice);
+      /* SELECT SLEEP(5); */ /* comment out this line to see overbooking problem */
       UPDATE Flight SET AvailableSeats = AvailableSeats - noOfPassengersReserved WHERE FlightNo = flight_number;
       OPEN reservation_cursor;
       OPEN passport_cursor;
@@ -218,7 +219,7 @@ ELSE
             FETCH reservation_cursor INTO rn;
             FETCH passport_cursor INTO pn;
             IF rn = reservation_nr THEN
-                  INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr); /*issueTicket trigger handles unguessable ticket numbers */
+                  INSERT INTO BookedFor VALUES (TicketNo, pn, reservation_nr);
                   SET noOfPassengersAdded = noOfPassengersAdded - 1;
             END IF;
       END LOOP;
@@ -249,7 +250,7 @@ CREATE FUNCTION calculatePrice(flightnumber INT)
       DECLARE wdFactor DOUBLE;
       DECLARE sFactor DOUBLE;
       DECLARE pFactor DOUBLE;
-      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS R WHERE W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code AND W.ScheduleYear = R.RouteYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS Ro WHERE W.SA_Airport_Code = Ro.A_Airport_Code AND W.SD_Airport_Code = Ro.D_Airport_Code AND W.ScheduleYear = Ro.RouteYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
       SET wdFactor = (SELECT WeekdayFactor  FROM (SELECT * FROM Weekly_Schedule AS W, Days AS D WHERE W.Weekday = D.Day AND W.ScheduleYear = D.IdentifyingYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
       SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
       SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
@@ -266,3 +267,52 @@ FROM (SELECT * FROM Flight AS F, Weekly_Schedule AS W, Route AS R, Airport AS A 
 (SELECT AirportCode AS DesAC, AirportName AS DesCity FROM Airport) AS AA, (SELECT AirportCode AS DepAC, AirportName AS DepCity FROM Airport) AS DA 
 WHERE ((AF.A_Airport_Code = AA.DesAC AND AF.A_Airport_Code = DA.DepAC) OR (AF.D_Airport_Code = DA.DepAC AND AF.A_Airport_Code = AA.DesAC)) AND (DA.DepCity != DesCity);
 
+
+
+/*
+
+Question 8: 
+(a) We can use hash functions like SHA-512 to hash the password and store the hashed password into database instead of plain text. To secure the sensitive information even more
+we can use a technique called salting the password. In this manner a password would be appended with a random sequence of charachters (salt) before hashing.
+
+(b) 
+  - Using stored procedures in the database has better response time because the stored procedures in database are stored as compiled version
+  - Using stored procedures it is possible to have several parameters, while in functions we can return only one variable or one table. 
+  - Using stored procedures are more secure because there is smaller chance for a malicious software to inject the server.
+  
+*/
+
+
+
+/*
+
+Question 9: 
+(b) No, it does not display simply because we did not commit the transaction yet. 
+(c) We tried to modify the reservation in A from B by using the addPassenger to recently
+    added reservation in session A, but the transaction in B is waiting for transaction
+    in A to be commited but if we do not commit transaction in A after a short period of
+    time we get timeout error in session B and transaction in session B is aborted and need to be restarted.
+    We get this error:
+    "ERROR 1205 (HY000): Lock wait timeout exceeded; try restarting transaction"
+
+*/
+
+/*
+Question 10:
+
+(a) No, it did not occur. It seems that Flight table gets updated and read in correct order 
+in our test. Because we read available seats of a flight from Flight table inside the procedure body and some line
+after that update the same tuple of Flight table.
+
+(b) Yes. It is possible in some cases. For instance if one session is reading available seats of a flight and store that
+inside a local variable inside of the addPayment procedure body and simultaneously another session just after that moment
+update availabe seats (decrement it). In this case first session assumes that there are enough available seats which is 
+in reality not true.
+
+(c) If wee put SLEEP(5) right before updating availabe seats of a flight inside addPayment (SLEEP is commented right now) procedure we get overbooking and number
+of free seats becomes -2 in one or both session which means we get racing condition.
+
+(d) The common resources in tables are locked before addPayment procedure, more specifically we need to lock all the tables we are doing the INSERT operations on.
+Other tables that are used inside the addPayment need to have READ lock on. These locks solved the solution despite having the SLEEP implemented in the code. 
+We are not getting deadlocks either. 
+*/
