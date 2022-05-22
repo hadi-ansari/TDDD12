@@ -185,10 +185,10 @@ SET noOfPassengersAdded = (SELECT COUNT(*) FROM ReservedFor WHERE Reservation_ID
 SET noOfAvailableSeats = calculateFreeSeats(flight_number);
 SET validReservationNumber = (SELECT COUNT(*) FROM Reservation WHERE ReservationID = reservation_nr);
 
-IF hasContact <= 0 THEN
-      SELECT "The reservation has no contact yet" AS "Message";
-ELSEIF validReservationNumber <= 0 THEN
+IF validReservationNumber <= 0 THEN
       SELECT "The given reservation number does not exist" AS "Message";
+ELSEIF hasContact <= 0 THEN
+      SELECT "The reservation has no contact yet" AS "Message";
 ELSEIF noOfAvailableSeats < noOfPassengersReserved THEN
       SELECT "There are not enough seats available on the flight anymore, deleting reservation" AS "Message";
 ELSE
