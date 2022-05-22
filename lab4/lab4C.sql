@@ -44,7 +44,7 @@ DROP VIEW IF EXISTS allFlights;
 
 
 
-/* TABLES */
+/* QUESTION 2 */
 CREATE TABLE Years(Year INTEGER PRIMARY KEY, ProfitFactor DOUBLE);
 
 CREATE TABLE Days(Day VARCHAR(10), WeekdayFactor DOUBLE, IdentifyingYear INTEGER, FOREIGN KEY (IdentifyingYear) REFERENCES Years(Year), PRIMARY KEY (Day, IdentifyingYear));
@@ -71,7 +71,7 @@ CREATE TABLE BookedFor(TicketNo BIGINT PRIMARY KEY, Passport_No INTEGER, Reserva
 
 CREATE TABLE Booking(Reservation_ID INTEGER PRIMARY KEY, Card_No BIGINT, ActualPrice DOUBLE, FOREIGN KEY (Reservation_ID) REFERENCES Reservation(ReservationID), FOREIGN KEY (Card_No) REFERENCES Customer(CardNo));
 
-/* PROCEDURES */
+/* QUESTION 3 */
 
 delimiter //
 CREATE PROCEDURE addYear(IN year INTEGER, IN factor DOUBLE)BEGIN INSERT INTO Years VALUES (year, factor); END;//
@@ -93,7 +93,6 @@ END IF;
 END;//
 
 
-
 CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN day VARCHAR(10), IN departure_time Time)
       BEGIN
       DECLARE schedule_id INTEGER;
@@ -107,11 +106,42 @@ CREATE PROCEDURE addFlight(IN departure_airport_code VARCHAR(3), IN arrival_airp
       END WHILE; 
       END//
 
-/* Trigger(s) */
+
+/* QUESTION 4 */
+
+CREATE FUNCTION calculateFreeSeats(flightnumber INTEGER)
+      RETURNS INTEGER
+      BEGIN 
+      DECLARE freeSeats INTEGER;
+      SELECT AvailableSeats INTO freeSeats FROM Flight WHERE FlightNo = flightnumber;
+      RETURN freeSeats;
+      END //
+
+
+CREATE FUNCTION calculatePrice(flightnumber INT)
+      RETURNS DOUBLE
+      BEGIN
+      DECLARE rPrice DOUBLE;
+      DECLARE wdFactor DOUBLE;
+      DECLARE sFactor DOUBLE;
+      DECLARE pFactor DOUBLE;
+      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS Ro WHERE W.SA_Airport_Code = Ro.A_Airport_Code AND W.SD_Airport_Code = Ro.D_Airport_Code AND W.ScheduleYear = Ro.RouteYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET wdFactor = (SELECT WeekdayFactor  FROM (SELECT * FROM Weekly_Schedule AS W, Days AS D WHERE W.Weekday = D.Day AND W.ScheduleYear = D.IdentifyingYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
+      SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
+      RETURN ROUND((rPrice * wdFactor * sFactor * pFactor), 3);
+      END;//
+
+delimiter ;
+
+/* QUESTION 5 */
 
 delimiter ;
 CREATE TRIGGER issueTicket BEFORE INSERT ON BookedFor FOR EACH ROW SET NEW.TicketNo = (SELECT U.ticket_nr FROM (SELECT CAST(RAND() * 1000000000 AS INTEGER) AS ticket_nr) AS U WHERE U.ticket_nr NOT IN (SELECT TicketNo FROM BookedFor));
 delimiter //
+
+
+/* QUESTION 6 */
 
 CREATE PROCEDURE addReservation(IN departure_airport_code VARCHAR(3), IN arrival_airport_code VARCHAR(3), IN year INTEGER, IN week INTEGER, IN day VARCHAR(10), IN time TIME, IN number_of_passenger INTEGER, OUT output_reservation_nr INTEGER )
 BEGIN
@@ -231,36 +261,8 @@ END;//
 delimiter ;
 
 
-/* Functions */
 
-delimiter //
-CREATE FUNCTION calculateFreeSeats(flightnumber INTEGER)
-      RETURNS INTEGER
-      BEGIN 
-      DECLARE freeSeats INTEGER;
-      SELECT AvailableSeats INTO freeSeats FROM Flight WHERE FlightNo = flightnumber;
-      RETURN freeSeats;
-      END //
-
-
-CREATE FUNCTION calculatePrice(flightnumber INT)
-      RETURNS DOUBLE
-      BEGIN
-      DECLARE rPrice DOUBLE;
-      DECLARE wdFactor DOUBLE;
-      DECLARE sFactor DOUBLE;
-      DECLARE pFactor DOUBLE;
-      SET rPrice =  (SELECT RoutePrice FROM (SELECT * FROM Weekly_Schedule AS W, Route AS Ro WHERE W.SA_Airport_Code = Ro.A_Airport_Code AND W.SD_Airport_Code = Ro.D_Airport_Code AND W.ScheduleYear = Ro.RouteYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
-      SET wdFactor = (SELECT WeekdayFactor  FROM (SELECT * FROM Weekly_Schedule AS W, Days AS D WHERE W.Weekday = D.Day AND W.ScheduleYear = D.IdentifyingYear) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
-      SET sFactor =  (SELECT ((40 - AvailableSeats + 1 )/40) FROM Flight WHERE FlightNo = flightnumber);
-      SET pFactor =  (SELECT ProfitFactor FROM (SELECT * FROM Weekly_Schedule AS W, Years AS Y WHERE W.ScheduleYear = Y.Year) AS T, Flight AS F WHERE T.ScheduleID = F.Schedule_ID AND F.FlightNo = flightnumber);
-      RETURN ROUND((rPrice * wdFactor * sFactor * pFactor), 3);
-      END;//
-
-delimiter ;
-
-
-/* View(s) */
+/* QUESTION 7 */
 
 CREATE VIEW allFlights AS SELECT DA.DepCity AS departure_city_name, AA.DesCity AS destination_city_name, AF.Time AS departure_time, AF.WeekDay AS departure_day, AF.Week AS departure_week, AF.ScheduleYear AS departure_year, AF.FlightNo, calculateFreeSeats(AF.FlightNo) AS nr_of_free_seats, calculatePrice(AF.FlightNo) AS current_price_per_seat
 FROM (SELECT * FROM Flight AS F, Weekly_Schedule AS W, Route AS R, Airport AS A WHERE F.Schedule_ID = W.ScheduleID AND W.SA_Airport_Code = R.A_Airport_Code AND W.SD_Airport_Code = R.D_Airport_Code AND W.ScheduleYear = R.RouteYear AND R.A_Airport_Code = A.AirportCode) AS AF,
@@ -271,7 +273,7 @@ WHERE ((AF.A_Airport_Code = AA.DesAC AND AF.A_Airport_Code = DA.DepAC) OR (AF.D_
 
 /*
 
-Question 8: 
+QUESTION 8: 
 (a) We can use hash functions like SHA-512 to hash the password and store the hashed password into database instead of plain text. To secure the sensitive information even more
 we can use a technique called salting the password. In this manner a password would be appended with a random sequence of charachters (salt) before hashing.
 
@@ -286,7 +288,7 @@ we can use a technique called salting the password. In this manner a password wo
 
 /*
 
-Question 9: 
+QUESTION 9: 
 (b) No, it does not display simply because we did not commit the transaction yet. 
 (c) We tried to modify the reservation in A from B by using the addPassenger to recently
     added reservation in session A, but the transaction in B is waiting for transaction
@@ -298,7 +300,8 @@ Question 9:
 */
 
 /*
-Question 10:
+
+QUESTION 10:
 
 (a) No, it did not occur. It seems that Flight table gets updated and read in correct order 
 in our test. Because we read available seats of a flight from Flight table inside the procedure body and some line
@@ -315,4 +318,32 @@ of free seats becomes -2 in one or both session which means we get racing condit
 (d) The common resources in tables are locked before addPayment procedure, more specifically we need to lock all the tables we are doing the INSERT operations on.
 Other tables that are used inside the addPayment need to have READ lock on. These locks solved the solution despite having the SLEEP implemented in the code. 
 We are not getting deadlocks either. 
+*/
+
+
+
+
+/* MINOR CHANGES IN EER DIAGRAM AND RELATIONAL MODEL 
+
+• Changed the ContactPerson entity to be also a weak-entity of Reservation so we can 
+have one contact person in multiple reservation.
+
+• Added an attribute to the Booking relation named ActualPrice in order to save 
+the price for each booking
+
+• Renamed some attributes in order to not get name conflicts when we combining tables in queries and subqueries. 
+
+*/
+
+
+
+/* SECONDARY INDEX 
+
+One case we can use secondary index implementaion is in Weekly_Schedule table where we store additional sorted file based on time.
+In this manner it would be more efficient to find some shcedule (more specifically arrival and deprrture ariport code) based on time. 
+In other words, all changes in primary index in the Weekly_Schedule table will be reflected in secondary index as well which in our case it is Time.
+In order to do that we can have in each row of secondary index two attributes: time (which is non-key attribute) and a pointer to a linked list
+where each element in that list points to a row in original table that flies in that time. 
+
+
 */
